@@ -2,14 +2,19 @@ import os
 from os.path import exists
 import pickle
 import re
+from time import sleep
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.common.exceptions import NoSuchElementException
 import logging
 import enlighten
 
-PROFILE_URL = input("AW Profile URL: ")
+PROFILE_NUMBER = input("AW Profile Number: ")
+PROFILE_URL = f"https://www.adultwork.com/ViewProfile.asp?UserID={PROFILE_NUMBER}"
+PRIVATE_GALLERY_URL = f"https://www.adultwork.com/XXXGallery.asp?UserID={PROFILE_NUMBER}"
 
 # Xpaths
 PROFILE_NAME = "/html/body/table/tbody/tr/td/div[2]/center/table[1]/tbody/tr/td/table/tbody/tr[1]/td[1]/span"
@@ -20,6 +25,7 @@ FIRST_IMAGE = "/html/body/table/tbody/tr/td/div/center/table/tbody/tr[2]/td/div/
 FULL_SIZE = "/html/body/form/table[1]/tbody/tr/td[2]/nobr/input[1]"
 PIC_TITLE = "/html/body/form/p[1]/b"
 PIC_TOTAL = "/html/body/table/tbody/tr/td/div/center/table/tbody/tr[2]/td/div/div/center/form/table/tbody/tr[1]/td/table/tbody/tr/td[2]"
+LARGE_PIC_TOTAL = "/html/body/table/tbody/tr/td/div[2]/center/table[2]/tbody/tr[2]/td/div[2]/center/form/div/center/table/tbody/tr[2]/td/div[1]/table/tbody/tr[1]/td"
 
 logging.basicConfig(level=logging.INFO)
 file_exists = exists('cookies.pkl')
@@ -34,7 +40,10 @@ if (file_exists):
 if (len(driver.find_elements(By.XPATH, LOGINOUT_SELECTOR)) == 0 or driver.find_element(By.XPATH, LOGINOUT_SELECTOR).text != "Logout"):
     logging.info("cookies have expired or do not exist, please login")
     driver.get("https://www.adultwork.com/Login.asp")
-    driver.find_element(By.XPATH, ADULT_WARNING_SELECTOR).click()
+    adult_warning = WebDriverWait(driver, 120).until(
+        EC.element_to_be_clickable((By.XPATH, ADULT_WARNING_SELECTOR))
+    )
+    adult_warning.click()
     try:
         element = WebDriverWait(driver, 120).until(
             EC.text_to_be_present_in_element((By.XPATH, LOGINOUT_SELECTOR), "Logout")
@@ -48,7 +57,9 @@ else:
     driver.quit()
 
 cookies = pickle.load(open("cookies.pkl", "rb"))
-driver = webdriver.Firefox()
+options = FirefoxOptions()
+options.add_argument("--headless")
+driver = webdriver.Firefox(options=options)
 driver.get("https://www.adultwork.com/Home.asp")
 for cookie in cookies:
     driver.add_cookie(cookie)
@@ -57,9 +68,14 @@ for cookie in cookies:
 
 driver.get(PROFILE_URL)
 profile_name = driver.find_element(By.XPATH, PROFILE_NAME).text
-driver.find_element(By.XPATH, PRIVATE_GALLERY_BUTTON).click()
+driver.get(PRIVATE_GALLERY_URL)
 num_pics = driver.find_element(By.XPATH, PIC_TOTAL).text.split(" pictures")[0]
 main_window = driver.current_window_handle
+if(len(driver.find_elements(By.XPATH, FIRST_IMAGE)) == 0):
+    logging.info("private gallery images not found. Is your subscription expired?")
+    driver.quit()
+    exit()
+
 driver.find_element(By.XPATH, FIRST_IMAGE).click()
 for handle in driver.window_handles: 
     if handle != main_window: 
